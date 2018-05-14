@@ -1,4 +1,7 @@
 @ECHO OFF
+CD /D "%~dp0" >nul
+SET THISBAT=%~0
+SET THISPATH=%~dp0
 IF "%~1" == "-hex" (
 	REM Work-around for calling batch-label inside a for loop
 	CALL :DecToHex "%~2"
@@ -48,136 +51,12 @@ ECHO.
 SET /P CHOICE_MAIN=[#] Enter number: 
 ECHO.
 
-
 IF "%CHOICE_MAIN%"=="1" (
-	ECHO [i] Found partition lists:
-	ECHO.
-	SET COUNT=1
-	FOR %%F IN (partition_list.*.txt) DO (
-		SET CHOICE_!COUNT!=%%F
-		ECHO 	!COUNT!^) %%F
-		SET COMMENT=
-		FOR /F "delims=" %%C IN ('TYPE %%F') DO (
-			IF "!COMMENT!"=="" (
-				SET COMMENT=%%C
-			)
-		)
-		ECHO 		!COMMENT!
-		SET /A COUNT=!COUNT!+1
-	)
-	ECHO.
-	SET /P CHOICE_PARTLIST=[#] Select desired partition list: 
-	ECHO.
-	FOR %%N IN (!CHOICE_PARTLIST!) DO SET CHOICE_PARTLIST=!CHOICE_%%N!
-	IF EXIST !CHOICE_PARTLIST! (
-		SET PARTITION_LIST_FILE=!CHOICE_PARTLIST!
-		ECHO [i] Selected '!PARTITION_LIST_FILE!'.
-	) ELSE (
-		ECHO [^^!] Invalid choice.
-		
-	)
+	CALL :CHOICE_SET_PARTITION_LIST
 ) ELSE IF "%CHOICE_MAIN%"=="2" (
-	REM Verify the partition list exists
-	IF EXIST %PARTITION_LIST_FILE% (
-		SET /P CHOICE_BACKUPPATH=[#] Enter folder name or full/relative path to store the backup [must not already exist]: 
-		IF "!CHOICE_BACKUPPATH!"=="" (
-			ECHO [^^!] You must enter a path. Just a name of subfolder is enough.
-		) ELSE IF EXIST !CHOICE_BACKUPPATH! (
-			ECHO [^^!] Folder or file of that name already exists.
-		) ELSE (
-			REM Got backup path
-			MKDIR !CHOICE_BACKUPPATH!
-			ECHO [#] Press any key to start backup. This may take some time. You can check log.txt for detailed progress or
-			ECHO     concerns of a freeze.
-			PAUSE>NUL
-			ECHO.
-			FOR /F %%P IN (%PARTITION_LIST_FILE%) DO (
-				SET PARTNAME=%%P
-				IF NOT "!PARTNAME:~0,1!"=="#" (
-					REM skip comments
-					CALL :BACKUP_PART !PARTNAME! !CHOICE_BACKUPPATH!
-					IF "!ERROR!"=="1" (
-						CALL :ERROR "BACKUP IS INCOMPLETE."
-						GOTO :ERROR_END
-					)
-				)
-			)
-			ECHO.
-			ECHO [#] Dumping partition table info...
-			ECHO # PartNum PartName StartSec NumSecs> "!CHOICE_BACKUPPATH!\partitiontable.tmp.txt"
-			ECHO.>> "!CHOICE_BACKUPPATH!\partitiontable.tmp.txt"
-			"%~dp0\bin\emmcdl.exe" -p %CONFIG_COMPORT% -f "%CONFIG_LOADER%" -gpt > "!CHOICE_BACKUPPATH!\tmp.txt"
-			IF ERRORLEVEL 1 (
-				CALL :ERROR "BACKUP IS INCOMPLETE"
-				REM Copy the log here since we don't want to interfere with ERRORLEVEL
-				TYPE "!CHOICE_BACKUPPATH!\tmp.txt" >> "%~dp0\log.txt"
-				GOTO :ERROR_END
-			)
-			TYPE "!CHOICE_BACKUPPATH!\tmp.txt" >> "%~dp0\log.txt"
-			REM Parse the GPT dump output
-			FOR /F "delims=" %%L IN ('TYPE "!CHOICE_BACKUPPATH!\tmp.txt"') DO (
-				SET LINE=%%L
-				REM Check if this line begins with a digit
-				IF "!LINE:~0,1!" GEQ "0" (
-					IF "!LINE:~0,1!" LEQ "9" (
-						REM Split on . and :, up to 12 tokens (starting at %%A, then %%B, etc)
-						FOR /F "tokens=1-12 delims=.: " %%A IN ("!LINE!") DO (
-							REM PartNum PartName StartLBA SizeInLBA
-							ECHO %%A %%D %%G %%K>> "!CHOICE_BACKUPPATH!\partitiontable.tmp.txt"
-						)
-					)
-				)
-			)
-			DEL "!CHOICE_BACKUPPATH!\tmp.txt"
-			ECHO [#] Building rawprogram0.xml...
-			REM Build rawprogram0.xml
-			SET RAW_PROG_XML=!CHOICE_BACKUPPATH!\rawprogram0.xml
-			ECHO ^<?xml version="1.0" ?^>>"!RAW_PROG_XML!"
-			ECHO ^<data^>>>"!RAW_PROG_XML!"
-			FOR /F "tokens=1-4" %%A IN ('TYPE "!CHOICE_BACKUPPATH!\partitiontable.tmp.txt"') DO (
-				REM skip comments
-				IF NOT "%%A"=="#" (
-					FOR /F %%P IN (%PARTITION_LIST_FILE%) DO (
-						IF "%%P" == "%%B" (
-							REM Thanks to emuzychenko for this batch wizardry
-							REM Calculate byte offset in 256-byte units to avoid overflow
-							SET /A ByteOffset256=%%C * 2
-							SET /A SizeInKB=%%D / 2
-							FOR /F %%Z IN ('CALL "%~0" -hex !ByteOffset256!') DO SET ByteOffset256Hex=%%Z
-							ECHO   ^<program SECTOR_SIZE_IN_BYTES="512" file_sector_offset="0" filename="%%B.img" label="%%B" num_partition_sectors="%%D" physical_partition_number="0" size_in_KB="!SizeInKB!.0" sparse="false" start_byte_hex="0x!ByteOffset256Hex!00L" start_sector="%%C"/^>>>"!RAW_PROG_XML!"
-						)
-					)
-				)
-			)
-			echo ^</data^>>>"!RAW_PROG_XML!"
-			DEL "!CHOICE_BACKUPPATH!\partitiontable.tmp.txt"
-			ECHO [i] All done^^!
-		)
-	) ELSE (
-		ECHO [^^!] Partition list invalid [not found or not set]. Please do it first.
-	)
+	CALL :CHOICE_BACKUP
 ) ELSE IF "%CHOICE_MAIN%"=="3" (
-	SET /P CHOICE_BACKUPPATH=[#] Enter folder name or full/relative path of backup to restore: 
-		IF "!CHOICE_BACKUPPATH!"=="" (
-			ECHO [^^!] You must enter a path. Just a name of subfolder is enough.
-		) ELSE IF NOT EXIST !CHOICE_BACKUPPATH! (
-			ECHO [^^!] Folder or file of that name already exists.
-		) ELSE (
-			REM Got backup path, verify it
-			CALL :RESTORE_VERIFY_PATH !CHOICE_BACKUPPATH!
-			IF "!ERROR!"=="1" (
-				ECHO 	[^^!] An error occured. Not a valid backup [missing rawprogram0.xml].
-				
-				GOTO :ERROR_END
-			)
-			REM Verified, go!
-			ECHO [#] Press any key to start restore. This may take some time. All output will be in the window (not the log) to show progress.
-			PAUSE>NUL
-			ECHO "%~dp0\bin\emmcdl.exe" -p %CONFIG_COMPORT% -f "%~dp0\%CONFIG_LOADER%" -x "!CD!\rawprogram0.xml" -MaxPayloadSizeToTargetInBytes 16384
-			"%~dp0\bin\emmcdl.exe" -p %CONFIG_COMPORT% -f "%~dp0\%CONFIG_LOADER%" -x "!CD!\rawprogram0.xml" -MaxPayloadSizeToTargetInBytes 16384
-			ECHO.
-			ECHO [i] All done^^!
-		)
+	CALL :CHOICE_RESTORE
 ) ELSE IF "%CHOICE_MAIN%"=="4" (
 	ECHO.
 	ECHO [i] Nothing here yet...
@@ -189,9 +68,9 @@ IF "%CHOICE_MAIN%"=="1" (
 :ERROR_END
 SET ERROR=0
 REM clean the log file
-IF EXIST "%~dp0\log.txt" (
-	FINDSTR /V "Sectors remaining " "%~dp0\log.txt" > "%~dp0\log.clean.txt"
-	MOVE /Y "%~dp0\log.clean.txt" "%~dp0\log.txt" >nul
+IF EXIST "%THISPATH%\log.txt" (
+	FINDSTR /V "Sectors remaining " "%THISPATH%\log.txt" > "%THISPATH%\log.clean.txt"
+	MOVE /Y "%THISPATH%\log.clean.txt" "%THISPATH%\log.txt" >nul
 )
 ECHO.
 ECHO [i] Press any key to return to main menu.
@@ -206,6 +85,140 @@ ECHO 	    See log.txt for details.
 ECHO.
 GOTO :EOF
 
+:CHOICE_SET_PARTITION_LIST
+ECHO [i] Found partition lists:
+ECHO.
+SET COUNT=1
+FOR %%F IN (partition_list.*.txt) DO (
+	SET CHOICE_!COUNT!=%%F
+	ECHO 	!COUNT!^) %%F
+	SET COMMENT=
+	FOR /F "delims=" %%C IN ('TYPE %%F') DO (
+		IF "!COMMENT!"=="" (
+			SET COMMENT=%%C
+		)
+	)
+	ECHO 		!COMMENT!
+	SET /A COUNT=!COUNT!+1
+)
+ECHO.
+SET /P CHOICE_PARTLIST=[#] Select desired partition list: 
+ECHO.
+FOR %%N IN (!CHOICE_PARTLIST!) DO SET CHOICE_PARTLIST=!CHOICE_%%N!
+IF EXIST !CHOICE_PARTLIST! (
+	SET PARTITION_LIST_FILE=!CHOICE_PARTLIST!
+	ECHO [i] Selected '!PARTITION_LIST_FILE!'.
+) ELSE (
+	ECHO [^^!] Invalid choice.
+)
+GOTO :EOF
+
+:CHOICE_BACKUP
+REM Verify the partition list exists
+IF EXIST %PARTITION_LIST_FILE% (
+	SET /P CHOICE_BACKUPPATH=[#] Enter folder name or full/relative path to store the backup [must not already exist]: 
+	IF "!CHOICE_BACKUPPATH!"=="" (
+		ECHO [^^!] You must enter a path. Just a name of subfolder is enough.
+	) ELSE IF EXIST !CHOICE_BACKUPPATH! (
+		ECHO [^^!] Folder or file of that name already exists.
+	) ELSE (
+		REM Got backup path
+		MKDIR !CHOICE_BACKUPPATH!
+		ECHO [#] Press any key to start backup. This may take some time. You can check log.txt for detailed progress or
+		ECHO     concerns of a freeze.
+		PAUSE>NUL
+		ECHO.
+		FOR /F %%P IN (%PARTITION_LIST_FILE%) DO (
+			SET PARTNAME=%%P
+			IF NOT "!PARTNAME:~0,1!"=="#" (
+				REM skip comments
+				CALL :BACKUP_PART !PARTNAME! !CHOICE_BACKUPPATH!
+				IF "!ERROR!"=="1" (
+					CALL :ERROR "BACKUP IS INCOMPLETE."
+					GOTO :ERROR_END
+				)
+			)
+		)
+		ECHO.
+		ECHO [#] Dumping partition table info...
+		ECHO # PartNum PartName StartSec NumSecs> "!CHOICE_BACKUPPATH!\partitiontable.tmp.txt"
+		ECHO.>> "!CHOICE_BACKUPPATH!\partitiontable.tmp.txt"
+		"%THISPATH%\bin\emmcdl.exe" -p %CONFIG_COMPORT% -f "%CONFIG_LOADER%" -gpt > "!CHOICE_BACKUPPATH!\tmp.txt"
+		IF ERRORLEVEL 1 (
+			CALL :ERROR "BACKUP IS INCOMPLETE"
+			REM Copy the log here since we don't want to interfere with ERRORLEVEL
+			TYPE "!CHOICE_BACKUPPATH!\tmp.txt" >> "%THISPATH%\log.txt"
+			GOTO :ERROR_END
+		)
+		TYPE "!CHOICE_BACKUPPATH!\tmp.txt" >> "%THISPATH%\log.txt"
+		REM Parse the GPT dump output
+		FOR /F "delims=" %%L IN ('TYPE "!CHOICE_BACKUPPATH!\tmp.txt"') DO (
+			SET LINE=%%L
+			REM Check if this line begins with a digit
+			IF "!LINE:~0,1!" GEQ "0" (
+				IF "!LINE:~0,1!" LEQ "9" (
+					REM Split on . and :, up to 12 tokens (starting at %%A, then %%B, etc)
+					FOR /F "tokens=1-12 delims=.: " %%A IN ("!LINE!") DO (
+						REM PartNum PartName StartLBA SizeInLBA
+						ECHO %%A %%D %%G %%K>> "!CHOICE_BACKUPPATH!\partitiontable.tmp.txt"
+					)
+				)
+			)
+		)
+		DEL "!CHOICE_BACKUPPATH!\tmp.txt"
+		ECHO [#] Building rawprogram0.xml...
+		REM Build rawprogram0.xml
+		SET RAW_PROG_XML=!CHOICE_BACKUPPATH!\rawprogram0.xml
+		ECHO ^<?xml version="1.0" ?^>>"!RAW_PROG_XML!"
+		ECHO ^<data^>>>"!RAW_PROG_XML!"
+		FOR /F "tokens=1-4" %%A IN ('TYPE "!CHOICE_BACKUPPATH!\partitiontable.tmp.txt"') DO (
+			REM skip comments
+			IF NOT "%%A"=="#" (
+				FOR /F %%P IN (%PARTITION_LIST_FILE%) DO (
+					IF "%%P" == "%%B" (
+						REM Thanks to emuzychenko for this batch wizardry
+						REM Calculate byte offset in 256-byte units to avoid overflow
+						SET /A ByteOffset256=%%C * 2
+						SET /A SizeInKB=%%D / 2
+						FOR /F %%Z IN ('CALL "%THISBAT%" -hex !ByteOffset256!') DO SET ByteOffset256Hex=%%Z
+						ECHO   ^<program SECTOR_SIZE_IN_BYTES="512" file_sector_offset="0" filename="%%B.img" label="%%B" num_partition_sectors="%%D" physical_partition_number="0" size_in_KB="!SizeInKB!.0" sparse="false" start_byte_hex="0x!ByteOffset256Hex!00L" start_sector="%%C"/^>>>"!RAW_PROG_XML!"
+					)
+				)
+			)
+		)
+		echo ^</data^>>>"!RAW_PROG_XML!"
+		DEL "!CHOICE_BACKUPPATH!\partitiontable.tmp.txt"
+		ECHO [i] All done^^!
+	)
+) ELSE (
+	ECHO [^^!] Partition list invalid [not found or not set]. Please do it first.
+)
+GOTO :EOF
+
+:CHOICE_RESTORE
+SET /P CHOICE_BACKUPPATH=[#] Enter folder name or full/relative path of backup to restore: 
+IF "!CHOICE_BACKUPPATH!"=="" (
+	ECHO [^^!] You must enter a path. Just a name of subfolder is enough.
+) ELSE IF NOT EXIST !CHOICE_BACKUPPATH! (
+	ECHO [^^!] Folder or file of that name could not be found.
+) ELSE (
+	REM Got backup path, verify it
+	CALL :RESTORE_VERIFY_PATH !CHOICE_BACKUPPATH!
+	IF "!ERROR!"=="1" (
+		ECHO 	[^^!] An error occured. Not a valid backup path [missing rawprogram0.xml].
+		GOTO :ERROR_END
+	)
+	REM Verified, go!
+	ECHO [#] Press any key to start restore. This may take some time. All output will be in the window [not the log] to show progress.
+	PAUSE>NUL
+	CD !CHOICE_BACKUPPATH!
+	ECHO "%THISPATH%\bin\emmcdl.exe" -p %CONFIG_COMPORT% -f "%THISPATH%\%CONFIG_LOADER%" -x "!CD!\rawprogram0.xml" -MaxPayloadSizeToTargetInBytes 16384
+	"%THISPATH%\bin\emmcdl.exe" -p %CONFIG_COMPORT% -f "%THISPATH%\%CONFIG_LOADER%" -x "!CD!\rawprogram0.xml" -MaxPayloadSizeToTargetInBytes 16384
+	ECHO.
+	ECHO [i] All done^^!
+)
+GOTO :EOF
+
 :RESTORE_VERIFY_PATH
 IF NOT EXIST "%~1\rawprogram0.xml" (
 	SET ERROR=1
@@ -217,7 +230,7 @@ GOTO :EOF
 SET PART_NAME=%1
 SET OUT="%~2\%1.img"
 ECHO 	[#] Dumping "%PART_NAME%" to %OUT%...
-"%~dp0\bin\emmcdl.exe" -p %CONFIG_COMPORT% -f "%CONFIG_LOADER%" -d %PART_NAME% -o %OUT% -MaxPayloadSizeToTargetInBytes 16384 >> "%~dp0\log.txt"
+"%THISPATH%\bin\emmcdl.exe" -p %CONFIG_COMPORT% -f "%CONFIG_LOADER%" -d %PART_NAME% -o %OUT% -MaxPayloadSizeToTargetInBytes 16384 >> "%THISPATH%\log.txt"
 IF ERRORLEVEL 1 (
 	SET ERROR=1
 )

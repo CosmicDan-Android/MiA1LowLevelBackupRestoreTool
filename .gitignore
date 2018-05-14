@@ -3,5 +3,6 @@
 !/bin/
 !/.gitignore
 !/BackupRestoreTool.cmd
+!/BackupRestoreTool_debug.cmd
 !/config.ini
 !/partition_list.*.txt
