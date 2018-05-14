@@ -1,0 +1,7 @@
+/?*
+/?*/
+!/bin/
+!/.gitignore
+!/BackupRestoreTool.cmd
+!/config.ini
+!/partition_list.*.txt
