@@ -211,9 +211,10 @@ IF "!CHOICE_BACKUPPATH!"=="" (
 	REM Verified, go!
 	ECHO [#] Press any key to start restore. This may take some time. All output will be in the window [not the log] to show progress.
 	PAUSE>NUL
-	CD !CHOICE_BACKUPPATH!
+	CD /D !CHOICE_BACKUPPATH!
 	ECHO "%THISPATH%\bin\emmcdl.exe" -p %CONFIG_COMPORT% -f "%THISPATH%\%CONFIG_LOADER%" -x "!CD!\rawprogram0.xml" -MaxPayloadSizeToTargetInBytes 16384
 	"%THISPATH%\bin\emmcdl.exe" -p %CONFIG_COMPORT% -f "%THISPATH%\%CONFIG_LOADER%" -x "!CD!\rawprogram0.xml" -MaxPayloadSizeToTargetInBytes 16384
+	CD /D "%THISPATH%"
 	ECHO.
 	ECHO [i] All done^^!
 )
