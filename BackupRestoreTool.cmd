@@ -30,7 +30,9 @@ ECHO         %CONFIG_COMPORT%
 ECHO [#] Reading configured Firehose loader binary path...
 CALL :READ_CONFIG_INI FirehoseLoader CONFIG_LOADER
 ECHO         %CONFIG_LOADER%
-ECHO.
+ECHO [#] Reading configured transfer speed...
+CALL :READ_CONFIG_INI TransferSpeed CONFIG_SPEED
+ECHO         %CONFIG_SPEED%
 ECHO.
 
 :MAIN_MENU
@@ -48,7 +50,9 @@ ECHO.
 ECHO     5) Quit
 ECHO.
 ECHO.
-SET /P CHOICE_MAIN=[#] Enter number: 
+SET CHOICE_MAIN=
+ECHO [#] Enter number: 
+SET /P CHOICE_MAIN=
 ECHO.
 
 IF "%CHOICE_MAIN%"=="1" (
@@ -102,7 +106,8 @@ FOR %%F IN (partition_list.*.txt) DO (
 	SET /A COUNT=!COUNT!+1
 )
 ECHO.
-SET /P CHOICE_PARTLIST=[#] Select desired partition list: 
+ECHO [#] Select desired partition list: 
+SET /P CHOICE_PARTLIST=
 ECHO.
 FOR %%N IN (!CHOICE_PARTLIST!) DO SET CHOICE_PARTLIST=!CHOICE_%%N!
 IF EXIST !CHOICE_PARTLIST! (
@@ -116,7 +121,8 @@ GOTO :EOF
 :CHOICE_BACKUP
 REM Verify the partition list exists
 IF EXIST %PARTITION_LIST_FILE% (
-	SET /P CHOICE_BACKUPPATH=[#] Enter folder name or full/relative path to store the backup [must not already exist]: 
+	ECHO [#] Enter folder name or full/relative path to store the backup [must not already exist]: 
+	SET /P CHOICE_BACKUPPATH=
 	IF "!CHOICE_BACKUPPATH!"=="" (
 		ECHO [^^!] You must enter a path. Just a name of subfolder is enough.
 	) ELSE IF EXIST !CHOICE_BACKUPPATH! (
@@ -196,7 +202,8 @@ IF EXIST %PARTITION_LIST_FILE% (
 GOTO :EOF
 
 :CHOICE_RESTORE
-SET /P CHOICE_BACKUPPATH=[#] Enter folder name or full/relative path of backup to restore: 
+ECHO [#] Enter folder name or full/relative path of backup to restore: 
+SET /P CHOICE_BACKUPPATH=
 IF "!CHOICE_BACKUPPATH!"=="" (
 	ECHO [^^!] You must enter a path. Just a name of subfolder is enough.
 ) ELSE IF NOT EXIST !CHOICE_BACKUPPATH! (
@@ -212,8 +219,8 @@ IF "!CHOICE_BACKUPPATH!"=="" (
 	ECHO [#] Press any key to start restore. This may take some time. All output will be in the window [not the log] to show progress.
 	PAUSE>NUL
 	CD /D !CHOICE_BACKUPPATH!
-	ECHO "%THISPATH%\bin\emmcdl.exe" -p %CONFIG_COMPORT% -f "%THISPATH%\%CONFIG_LOADER%" -x "!CD!\rawprogram0.xml" -MaxPayloadSizeToTargetInBytes 16384
-	"%THISPATH%\bin\emmcdl.exe" -p %CONFIG_COMPORT% -f "%THISPATH%\%CONFIG_LOADER%" -x "!CD!\rawprogram0.xml" -MaxPayloadSizeToTargetInBytes 16384
+	ECHO "%THISPATH%\bin\emmcdl.exe" -p %CONFIG_COMPORT% -f "%THISPATH%\%CONFIG_LOADER%" -x "!CD!\rawprogram0.xml" -MaxPayloadSizeToTargetInBytes %CONFIG_SPEED%
+	"%THISPATH%\bin\emmcdl.exe" -p %CONFIG_COMPORT% -f "%THISPATH%\%CONFIG_LOADER%" -x "!CD!\rawprogram0.xml" -MaxPayloadSizeToTargetInBytes %CONFIG_SPEED%
 	CD /D "%THISPATH%"
 	ECHO.
 	ECHO [i] All done^^!
@@ -231,7 +238,7 @@ GOTO :EOF
 SET PART_NAME=%1
 SET OUT="%~2\%1.img"
 ECHO 	[#] Dumping "%PART_NAME%" to %OUT%...
-"%THISPATH%\bin\emmcdl.exe" -p %CONFIG_COMPORT% -f "%CONFIG_LOADER%" -d %PART_NAME% -o %OUT% -MaxPayloadSizeToTargetInBytes 16384 >> "%THISPATH%\log.txt"
+"%THISPATH%\bin\emmcdl.exe" -p %CONFIG_COMPORT% -f "%CONFIG_LOADER%" -d %PART_NAME% -o %OUT% -MaxPayloadSizeToTargetInBytes %CONFIG_SPEED% >> "%THISPATH%\log.txt"
 IF ERRORLEVEL 1 (
 	SET ERROR=1
 )
