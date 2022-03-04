@@ -276,5 +276,5 @@ GOTO :EOF
 :: Credits to emil @ StackOverflow - https://stackoverflow.com/a/4518146/1767892
 :: Syntax - CALL :READ_CONFIG_INI [INI_KEYNAME] [BAT_VARNAME]
 :READ_CONFIG_INI
-FOR /F "tokens=2 delims==" %%k IN ('find "%~1=" config.ini') DO SET %~2=%%k
+FOR /F "tokens=2 delims==" %%k IN ('%WINDIR%\System32\find.exe "%~1=" "config.ini"') DO SET %~2=%%k
 GOTO :EOF
